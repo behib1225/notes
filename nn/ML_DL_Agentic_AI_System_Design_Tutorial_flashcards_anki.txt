@@ -1,0 +1,313 @@
+#separator:tab
+#html:true
+#tags column:3
+In a production ML system, which part is usually the smallest?	The model code. Data collection, validation, feature pipelines, serving and monitoring dominate effort and failures (Sculley et al., 2015).	chapter-1_2 concept
+List the 8 steps of the ML system design framework in order.	Requirements → Framing → Data → Features → Model → Evaluation → Serving → Monitoring. Monitoring feeds back into data.	chapter-1_2 concept
+Give one functional and three non-functional requirements for a feed ranker.	Functional: rank 500 videos for the home feed. Non-functional: e.g., 50k QPS, p99 &lt; 200 ms, new items visible within hours (also cost, privacy, fairness, safety).	chapter-1_2 concept
+Why state a non-ML baseline in the framing step?	The model must beat it, it is the fallback when the model fails, and it can ship quickly to start collecting training data.	chapter-1_2 concept
+“You have two weeks and one engineer.” What do you build first?	Logging and the data pipeline, a heuristic baseline, and an evaluation set. Everything later depends on them, and the baseline may already deliver value.	chapter-1_2 scenario
+For LLM and agent systems, what replaces the “features” step?	Context engineering: the system prompt, retrieved documents, tool definitions and memory that go into the prompt.	chapter-1_2 concept
+For LLM and agent systems, what replaces the “model choice” step?	Choosing the autonomy level (single call, workflow, agent, multi-agent) and model routing between small and large models.	chapter-1_2 concept
+What is the most common way candidates fail an ML design interview?	Jumping to the model (“I’d use a transformer”) before defining the prediction target, scale and label source.	chapter-1_2 concept
+Why do interviewers ask for p99 latency instead of the average?	In fan-out systems the page waits for the slowest backend call, so a backend’s tail latency becomes the user’s typical latency (Dean &amp; Barroso, “The Tail at Scale”).	chapter-3 concept
+A request fans out to 20 independent backend calls. Each exceeds its p99 with probability 1%. What fraction of requests hit at least one slow call?	1 − 0.99²⁰ ≈ 18%.<br><br><i>With 100 calls it is ≈ 63%. Correlated slowness can make the real figure better or worse, so measure it.</i>	chapter-3 calc
+What is a hedged request?	Sending a duplicate request after a short delay and using whichever response arrives first, to cut tail latency.	chapter-3 concept
+Three estimation shortcuts: seconds per day, QPS per 1M requests/day, peak-to-average ratio.	1 day ≈ 86,400 s ≈ 10⁵ s; 1M requests/day ≈ 12 QPS; peak ≈ 2–5× average.	chapter-3 formula
+300M requests/day. Average QPS, and peak QPS at 3× average?	3×10⁸ ÷ 86,400 ≈ 3,500 QPS average (≈ 3,000 with the 10⁵ shortcut); ≈ 10,000 QPS peak.	chapter-3 calc
+Order from fastest to slowest: datacenter round trip, DRAM reference, cross-continent round trip, NVMe SSD 4 KB random read.	DRAM (~100 ns) &lt; SSD random read (~20–100 µs) &lt; datacenter round trip (~0.5 ms) &lt; US–Europe round trip (~70–100 ms).<br><br><i>Memorize ratios, not digits; long-distance round trips are bounded by the speed of light in fibre.</i>	chapter-3 concept
+After a back-of-envelope estimate, what should you name for the interviewer?	The dominant factor. Ranking cost = requests × candidates × FLOPs per candidate, so the first lever is fewer candidates — the reason multi-stage ranking exists.	chapter-3 concept
+100M user embeddings, 128 dimensions, float32. Storage? And in float16?	10⁸ × 128 × 4 B ≈ 51 GB; ≈ 26 GB in float16.	chapter-3 calc
+Replication vs sharding.	Replication copies data to several machines for availability and read throughput. Sharding splits data across machines when it does not fit on one.	chapter-3 concept
+During a network partition, does ML serving usually prefer consistency or availability?	Availability: a slightly stale feature value is better than a failed request.	chapter-3 concept
+Why might you compute a feature in a daily batch job even though streaming is fresher?	Streaming is costlier and harder (backfills, late events, exactly-once). Use it only for features whose value decays quickly, such as transaction velocity.	chapter-3 concept
+What does it mean for an operation to be idempotent?	Doing it twice has the same effect as doing it once, so clients can safely retry.	chapter-3 concept
+What is graceful degradation in ML serving?	When a component fails, serve a worse but valid result — e.g., cached or popularity-based results when the ranker times out.	chapter-3 concept
+Why is choosing the objective the most consequential design decision?	The model maximizes it relentlessly, including its loopholes: optimizing clicks yields clickbait; optimizing watch time can promote compulsive use.	chapter-4 concept
+Typical multi-signal feed score.	score = w₁·P(click) + w₂·E[watch time] + w₃·P(like) − w₄·P(report), with weights tuned in online experiments.	chapter-4 formula
+Pointwise vs pairwise vs listwise learning to rank.	Pointwise scores each item independently; pairwise learns which of two items is better (RankNet); listwise optimizes the whole list’s quality (ListNet, LambdaMART).	chapter-4 concept
+When should you not use ML?	When a simple stable rule suffices (e.g., a legal rule), there are no labels, errors must be legally explainable, or maintenance costs exceed the value. Many systems are hybrid: rules for hard constraints, ML for the fuzzy middle.	chapter-4 concept
+Define uplift (conditional average treatment effect).	τ(x) = P(Y=1 | x, treated) − P(Y=1 | x, not treated): the change in outcome caused by the action.	chapter-4 formula
+Which of the four uplift segments should receive a coupon?	Only persuadables (buy only with the coupon). Not sure things (buy anyway), lost causes (never buy) or sleeping dogs (contact makes them leave).	chapter-4 concept
+T-learner vs S-learner.	T-learner: one model on treated, one on control, subtract predictions. S-learner: one model with the treatment flag as a feature, predicted with the flag on and off.	chapter-4 concept
+Why is a randomized pilot preferred for training uplift models?	Observational data confuses “whom we chose to treat” with “what the treatment does”; observational methods rely on the unverifiable no-unmeasured-confounders assumption.	chapter-4 concept
+How do you evaluate an uplift model?	Qini or uplift curves on a randomized holdout: rank by predicted uplift and measure the incremental outcome from treating the top k versus a random k.	chapter-4 concept
+A churn model (AUC 0.85) targets the top 5% with retention offers; a randomized test shows almost no effect. Why, and what instead?	It ranks churn risk, not the offer’s effect: many targets are lost causes or sleeping dogs. Run a randomized pilot, train an uplift model, target highest predicted uplift.	chapter-4 scenario
+Main weakness of each label source: explicit, implicit, human annotation, delayed natural, weak/programmatic.	Explicit: sparse. Implicit: noisy and biased by what was shown. Human: expensive, labelers disagree. Delayed: training data is always old. Weak: noisy — validate against a gold set.	chapter-5 concept
+Three mitigations for position bias in click labels.	Use position as a training feature and set it to a constant at serving; inverse propensity weighting; randomize a small traffic slice to estimate the bias.	chapter-5 concept
+What is selection (exposure) bias and its standard mitigation?	You only get labels for items the current system chose to show. Reserve exploration traffic for random or uncertain items.	chapter-5 concept
+What is a feedback loop in ML systems?	Today’s model decides tomorrow’s training data, which can amplify popularity and bias over time.	chapter-5 concept
+What counts as a negative example for a click model?	An impression without a click. An item that was never shown is not a negative — the user had no chance to click it.	chapter-5 concept
+What are hard negatives used for in retrieval training?	Items similar to the positive but not engaged with; they teach finer distinctions than random negatives.	chapter-5 concept
+Probability correction after keeping negatives at rate w.	q = p / (p + (1 − p)/w), where p is the model output (He et al., 2014).	chapter-5 formula
+Negatives were kept at 10% (w = 0.1). The model predicts p = 0.5. Calibrated probability?	q = 0.5 / (0.5 + 0.5/0.1) = 0.5 / 5.5 ≈ 0.091.	chapter-5 calc
+Which metrics suit heavy class imbalance?	PR-AUC and operating-point metrics such as recall at fixed precision — not accuracy.	chapter-5 concept
+How should you split data for a production model that evolves over time?	By time (train on the past, test on the future), by group (e.g., user) to measure generalization to new entities, and with a gap before the test period when labels are delayed.	chapter-5 concept
+Define data leakage and give two examples.	Training features that contain information unavailable at prediction time. E.g., “account closed” as a churn feature; a user’s average spend computed with future transactions.	chapter-5 concept
+What is point-in-time correctness?	Each training example’s features use only data available strictly before that example’s timestamp. Feature-store point-in-time joins enforce it.	chapter-5 concept
+A churn model has 0.97 AUC offline and is no better than random online. What do you check first?	Leakage — a suspiciously high offline AUC is itself a warning sign. Then training–serving skew.	chapter-5 scenario
+Most common cause of silent model degradation, and the defense?	Unannounced upstream data changes (units, casing, dropped events). Automated validation of schema, ranges, null rates and distributions.	chapter-5 concept
+What is reject inference in credit models?	Outcomes exist only for applicants the old policy approved, so the model cannot learn from rejected applicants (selection bias).	chapter-5 concept
+What does UICX stand for?	User, Item, Context and Cross (interaction) features.	chapter-6 concept
+How do you represent high-cardinality IDs such as user ID or zip code?	Learned embeddings or the hashing trick.	chapter-6 concept
+Why is the hashing trick acceptable despite collisions?	With enough buckets frequent values rarely collide, and rare values carry little signal. You gain fixed memory, no vocabulary, and natural handling of unseen values.	chapter-6 concept
+How do you handle heavy-tailed numeric features (counts, prices)?	Log transform or bucketize.	chapter-6 concept
+How should missing values be represented?	An explicit missing indicator plus an imputed value — missingness is often informative.	chapter-6 concept
+Batch, streaming and on-demand features: one example and freshness for each.	Batch: 30-day average watch time (hours–1 day). Streaming: clicks in the last 5 minutes (seconds). On-demand: user–restaurant distance now (instant).	chapter-6 concept
+Three causes of training–serving skew.	Separate codebases computing a feature differently, different timing (end-of-day vs live values), different missing-value handling.	chapter-6 concept
+Most reliable fix for training–serving skew.	Log the feature values used at serving and train on those logs (“log-and-wait”), with shared feature definitions.	chapter-6 concept
+What four things does a feature store provide?	A shared registry of definitions, an offline store with point-in-time joins, a low-latency online store, and pipelines that materialize features online.	chapter-6 concept
+Two roles of embeddings in ML systems.	Input features for downstream models, and keys for nearest-neighbour retrieval.	chapter-6 concept
+A velocity feature is exact in training (SQL) but its serving counter (stream job) lags by 2 minutes. Consequence?	Serving undercounts during bursts — exactly when fraud spikes — so the model under-reacts. Train on logged served values and alert on stream lag.	chapter-6 scenario
+The standard model progression in interviews.	Heuristic → logistic regression → GBDT → deep models → foundation models, each step justified by a concrete limitation.	chapter-7 concept
+When is GBDT preferred over a deep model?	Mostly tabular data with engineered features, small-to-medium datasets, need for interpretability and fast iteration, no GPU serving.	chapter-7 concept
+When do deep models beat GBDT?	Huge data, very high-cardinality IDs needing embeddings, raw multimodal inputs, sequence features, multi-task objectives.	chapter-7 concept
+Core idea of Wide &amp; Deep.	A linear “wide” part memorizes specific feature combinations; a deep part generalizes.	chapter-7 concept
+Structure of DLRM.	Embedding tables for sparse features, MLPs for dense features, and explicit pairwise feature interactions.	chapter-7 concept
+Two-tower vs cross-encoder: the trade-off.	Two-tower: user and item meet only in a dot product, so item vectors are precomputed for ANN retrieval over millions — less expressive. Cross-encoder: features interact in every layer — more accurate but affordable only for hundreds to thousands of candidates.	chapter-7 concept
+What bias do in-batch negatives cause, and how is it corrected?	Popular items appear as negatives more often, so they are over-penalized. The logQ correction subtracts each item’s log sampling probability from its logit (Yi et al., 2019).	chapter-7 concept
+Loss for a p90 delivery-time prediction?	Quantile (pinball) loss with τ = 0.9.	chapter-7 concept
+Loss family for training retrieval embeddings?	Softmax / sampled softmax / InfoNCE (contrastive).	chapter-7 concept
+How does LambdaMART weight errors?	Each pairwise gradient is scaled by |ΔNDCG| from swapping the pair, so errors near the top count more; the gradients train boosted trees.	chapter-7 concept
+What problem does MMoE address in multi-task ranking?	Negative transfer between conflicting tasks, by using task-specific gates over shared experts.	chapter-7 concept
+Define calibration and name two post-hoc fixes.	Among examples predicted 0.3, about 30% are positive. Fixes: Platt scaling, isotonic regression (also temperature scaling). Measure with reliability diagrams and ECE.	chapter-7 concept
+Four ways to make a model cheap enough to serve.	Distillation, quantization, pruning, and caching/precomputation (e.g., item embeddings offline).	chapter-7 concept
+How does a new item get recommended before any interactions?	Content features (text/image embeddings, creator features) give it a meaningful embedding immediately; reserve exploration traffic for new items.	chapter-7 concept
+How do you handle a brand-new user?	Use context (location, device, signup answers), popularity and quick exploration; update the user representation within the session.	chapter-7 concept
+What is target attention (Deep Interest Network)?	The candidate item acts as the query attending over the user’s history, so the model focuses on the history relevant to that candidate.	chapter-7 concept
+Precision and recall.	Precision = TP / (TP + FP). Recall = TP / (TP + FN).	chapter-8 formula
+What does ROC-AUC measure?	The probability that a random positive is scored above a random negative.	chapter-8 concept
+Why can ROC-AUC look good but be misleading at a 0.05% positive rate?	It is dominated by easy negatives: a tiny false-positive rate over millions of negatives still produces far more false positives than true positives. PR-AUC exposes this.	chapter-8 concept
+What is normalized entropy (Facebook ads)?	Log loss divided by the entropy of the background CTR, making log loss comparable across base rates.	chapter-8 concept
+When is MRR the right ranking metric?	When only the first relevant result matters (e.g., question answering). MRR = mean of 1 / rank of the first relevant item.	chapter-8 concept
+DCG@K and NDCG@K.	DCG@K = Σᵢ (2^relᵢ − 1) / log₂(i + 1). NDCG@K = DCG@K / IDCG@K.	chapter-8 formula
+Which items must IDCG be computed from?	All relevant items known for the query, including those the model failed to return; otherwise low recall goes unpunished.	chapter-8 concept
+Model ranks two items with relevance [1, 3]; these are all relevant items. NDCG@2?	DCG = 1/1 + 7/log₂3 ≈ 5.42. IDCG (order [3, 1]) = 7 + 1/log₂3 ≈ 7.63. NDCG ≈ 0.71.	chapter-8 calc
+Which offline metric fits each stage: retrieval, ranking, rare events, calibration?	Recall@K; NDCG or AUC; PR-AUC or operating-point metrics; log loss.	chapter-8 concept
+A/B sample size per group (α = 0.05 two-sided, power 0.8).	n ≈ 16σ² / δ². For a per-user binary metric, σ² = p(1 − p).<br><br><i>16 ≈ 2 × (1.96 + 0.84)².</i>	chapter-8 formula
+Per-user conversion is 10%. You need to detect a +0.5 percentage-point absolute lift. Users per group?	σ² = 0.1 × 0.9 = 0.09; n ≈ 16 × 0.09 / 0.005² ≈ 57,600.	chapter-8 calc
+You need 300k users per group, 2 groups, and 40k new eligible users arrive per day. How long do you run the test?	600k ÷ 40k = 15 days, rounded up to full weekly cycles: 21 days. Don’t stop early on a significant peek.	chapter-8 scenario
+Why randomize an A/B test by user rather than by request?	Each user gets one consistent experience and user-level metrics like retention are attributable. Variance must then also be computed per user.	chapter-8 concept
+Why is p(1 − p)/impressions wrong for CTR in a user-randomized test?	Impressions from one user are correlated, so the true variance is larger; the naive formula gives false “significant” results. Use the delta method or bootstrap over users.	chapter-8 concept
+What is peeking and why is it harmful?	Repeatedly checking p-values and stopping when significant; it inflates false positives. Use a fixed horizon or sequential testing.	chapter-8 concept
+How do you handle network interference in marketplace or social A/B tests?	Cluster randomization (by city or social cluster) or switchback experiments that alternate treatment over time windows.	chapter-8 concept
+What is CUPED?	Variance reduction that uses pre-experiment data as a covariate, cutting the required sample size (Deng et al., 2013).	chapter-8 concept
+What are guardrail metrics?	Metrics that must not degrade even if the primary metric improves, e.g., latency, crash rate, unsubscribes, revenue.	chapter-8 concept
+Interleaving: strength and limitation.	Merges two rankers’ results into one list for the same user; far more sensitive to ranking preference than A/B, but does not measure business metrics.	chapter-8 concept
+How does Thompson sampling choose a variant?	Sample each variant’s success rate from its posterior and play the highest sample, so uncertain variants still get tried.	chapter-8 concept
+What must be logged to evaluate a new policy off-policy?	The propensities — the probability with which the old policy showed each item — for inverse propensity scoring.	chapter-8 concept
+Demographic parity vs equal opportunity vs equalized odds.	Equal positive-decision rates; equal true-positive rates; equal true-positive and false-positive rates across groups.	chapter-8 concept
+With different base rates, which two fairness criteria generally cannot both hold?	Calibration within groups and equal error rates, except in degenerate cases such as a perfect classifier (Kleinberg et al., 2016; Chouldechova, 2017).	chapter-8 concept
+Four reasons offline gains fail to show up online.	Exposure bias in logged data, proxy objective ≠ true goal, training–serving skew or latency regressions, and users adapting to the new system.	chapter-8 concept
+NDCG +4%, CTR +2%, but 7-day retention −0.3% (significant). Launch?	No. Investigate clickbait (dwell time, hides), diversity collapse, and latency regressions; add satisfaction signals to the objective.	chapter-8 scenario
+Batch vs online prediction trade-off.	Batch: near-zero-latency lookups but stale and wasted on inactive users. Online: fresh context but must fit the latency budget. Hybrid is common.	chapter-9 concept
+Stages of the multi-stage funnel and what each optimizes.	Retrieval (recall, ~10³–10⁴) → light ranker → heavy ranker (precision/NDCG, ~10²) → re-ranking (diversity, filters, business rules) → ~10–50 shown.	chapter-9 concept
+Why union several candidate sources?	Each captures a different signal (learned preference, follows, trending, fresh content); together they raise recall, add robustness and enable exploration.	chapter-9 concept
+Maximal Marginal Relevance (MMR) selection rule.	Greedily pick the item maximizing λ·relevance − (1 − λ)·max similarity to items already picked.	chapter-9 formula
+HNSW in one line, with its tuning knobs.	Multi-layer proximity graph searched greedily; excellent recall/latency, memory-hungry. Knobs: M (links per node), efSearch.	chapter-9 concept
+IVF in one line, with its tuning knobs.	k-means clusters vectors into lists; search only the nprobe closest lists. Knobs: nlist, nprobe.	chapter-9 concept
+What does product quantization (PQ) do?	Splits each vector into sub-vectors and stores the ID of each sub-vector’s nearest centroid, compressing vectors to tens of bytes.	chapter-9 concept
+1B vectors, 256-dim float32 vs PQ with 32 one-byte codes. Memory of each?	≈ 1.02 TB raw vs ≈ 32 GB PQ (32× smaller).	chapter-9 calc
+How do you recover recall lost to PQ compression?	Re-score the top candidates with full-precision vectors.	chapter-9 concept
+Why must query and index use the same embedding-model version?	Different versions produce incompatible vector spaces; re-index when the model changes.	chapter-9 concept
+Shadow deployment vs canary vs blue-green.	Shadow: copy of traffic, outputs unused. Canary: gradual traffic ramp with automatic rollback. Blue-green: two full environments with instant switch and rollback.	chapter-9 concept
+Canary release vs A/B test.	A canary checks safety (errors, latency) during a gradual ramp. An A/B test measures causal business impact with fixed allocation and duration.	chapter-9 concept
+Dynamic batching: what it trades.	Waits a few milliseconds to group requests: higher GPU throughput for a small latency cost.	chapter-9 concept
+Why prefer safetensors over pickle checkpoints?	Pickle files can execute arbitrary code when loaded; safetensors cannot.	chapter-9 concept
+Four serving reliability patterns.	Timeouts with fallbacks, circuit breakers, feature defaults identical to training, multi-region deployment.	chapter-9 concept
+Which autoscaling signals suit GPU inference?	Queue depth, in-flight requests per replica, p95 latency or TTFT, and KV-cache utilization — not CPU utilization.	chapter-9 concept
+Why can’t autoscaling absorb a sudden LLM traffic spike, and the mitigations?	A new replica needs a GPU node, a multi-GB image and a weight load — minutes. Keep warm spare replicas, scale predictively before known peaks, cache weights locally, pre-pull images.	chapter-9 concept
+What is NVIDIA MIG used for?	Partitioning one A100/H100-class GPU into up to 7 isolated slices so small models don’t waste a whole GPU.	chapter-9 concept
+When should a model-server readiness probe report “ready”?	Only after weights are loaded and a warm-up request succeeds.	chapter-9 concept
+Where are spot/preemptible GPUs appropriate?	Interruption-tolerant work such as batch inference or checkpointed training — never as the only capacity for a latency-critical service.	chapter-9 concept
+Covariate vs label vs concept drift.	Covariate: P(X) changes. Label: P(Y) changes. Concept: P(Y|X) changes — the same input now means something different.	chapter-10 concept
+The seven monitoring layers, bottom to top.	System health → data quality → feature distributions → prediction distribution → model performance → business metrics → fairness/slices.	chapter-10 concept
+Why monitor the prediction distribution?	It is available immediately while labels may take weeks; sudden shifts often reveal a broken feature or bad deploy first.	chapter-10 concept
+Population Stability Index and its usual thresholds.	PSI = Σ (aᵢ − eᵢ) ln(aᵢ / eᵢ). &lt; 0.1 stable, 0.1–0.25 moderate, &gt; 0.25 significant (conventions, not laws).	chapter-10 formula
+Two bins. Training proportions [0.5, 0.5], serving [0.7, 0.3]. PSI and verdict?	0.2·ln 1.4 + (−0.2)·ln 0.6 ≈ 0.067 + 0.102 ≈ 0.17 → moderate shift.	chapter-10 calc
+Caveat when using statistical tests for drift on millions of samples.	Tiny, irrelevant shifts become “significant”; judge effect size and focus on features the model relies on.	chapter-10 concept
+Three retraining strategies, and the step all of them need.	Scheduled, triggered, continual/online — all through an automated evaluation gate before promotion.	chapter-10 concept
+Risks of continual (online) learning.	Instability, catastrophic forgetting, and data poisoning.	chapter-10 concept
+How do you keep unbiased labels when the model’s actions hide outcomes?	Keep a small randomized or un-intervened holdout.	chapter-10 concept
+Reproducibility checklist for a model version.	Code commit, data snapshot, feature definitions version, hyperparameters, random seeds, container image, evaluation report.	chapter-10 concept
+Data poisoning: what it is and two defenses.	Injecting crafted training data or labels to degrade a model or plant a backdoor. Defenses: data provenance, caps on any one source’s influence, anomaly detection on labels, a trusted evaluation set.	chapter-10 concept
+Evasion attack and defenses.	Small deliberate input changes that flip predictions (misspellings, mimicry). Adversarial training, features costly to fake, fast retraining.	chapter-10 concept
+Model extraction and defenses.	Querying an API to train a copy. Rate limits, returning labels instead of full probabilities, detecting systematic query patterns.	chapter-10 concept
+What is a membership inference attack?	Determining whether a specific record was in the training set. Defenses: data minimization, deduplication, differential privacy.	chapter-10 concept
+A spam filter’s flag rate fell from 8% to 3% while precision stayed stable. Labels lag one week. Hypotheses?	Recall dropped because spammers adapted, a feature stopped updating, or less spam is being sent. Check feature freshness, human-review a sample of unflagged mail, watch user spam reports.	chapter-10 scenario
+Bytes per parameter for mixed-precision Adam training, itemized.	16: BF16 weights 2 + BF16 gradients 2 + FP32 master weights 4 + Adam first moment 4 + second moment 4. Activations are extra.	chapter-11 formula
+13B model, mixed-precision Adam, ZeRO-3 over 16 GPUs. Model-state memory per GPU?	13×10⁹ × 16 B = 208 GB total ÷ 16 = 13 GB per GPU.	chapter-11 calc
+What does activation checkpointing cost and save?	Recomputes discarded activations in the backward pass: about one extra forward pass (~30% more compute) for a large activation-memory saving.	chapter-11 concept
+What is gradient accumulation?	Running several micro-batches before each optimizer step to simulate a large batch with little memory.	chapter-11 concept
+Training and inference compute for a dense transformer.	Training ≈ 6·N·D FLOPs (N params, D tokens). Inference ≈ 2·N FLOPs per generated token.	chapter-11 formula
+13B model on 1T tokens, 512 GPUs at 400 TFLOP/s effective each. Wall-clock?	6 × 1.3×10¹⁰ × 10¹² = 7.8×10²² FLOPs ÷ (512 × 4×10¹⁴) ≈ 3.8×10⁵ s ≈ 4.4 days of pure compute.	chapter-11 calc
+What is MFU, and a typical value for large training jobs?	Model FLOPs Utilization = achieved FLOP/s ÷ hardware peak; roughly 35–50%.	chapter-11 concept
+Chinchilla rule and why modern models exceed it.	≈ 20 tokens per parameter is compute-optimal. Models are trained on far more because a smaller model trained longer is cheaper to serve.	chapter-11 concept
+What do ZeRO-1, ZeRO-2 and ZeRO-3 shard?	ZeRO-1: optimizer states. ZeRO-2: + gradients. ZeRO-3 / FSDP: + parameters (gathered before use, freed after).	chapter-11 concept
+How do data-parallel GPUs synchronize, and how often?	An all-reduce averages gradients once per step.	chapter-11 concept
+Why is tensor parallelism usually kept within one node?	It communicates activations in every layer, needing NVLink-class bandwidth; inter-node links are several times slower.	chapter-11 concept
+Pipeline bubble fraction (GPipe-style).	(p − 1) / (m + p − 1) for p stages and m micro-batches.	chapter-11 formula
+8 pipeline stages, 24 micro-batches. Bubble fraction?	7 / 31 ≈ 23% idle.	chapter-11 calc
+Sequence parallelism vs context parallelism.	SP shards LayerNorm/dropout activations along the sequence within a TP group. CP splits a whole long sequence, including attention, across GPUs (e.g., ring attention).	chapter-11 concept
+Rule of thumb for placing parallelism dimensions.	Put the most communication-hungry parallelism on the fastest links: TP within a node, PP across a few nodes, DP/FSDP across the rest; EP for MoE experts.	chapter-11 concept
+How are recommender models with terabytes of embedding tables trained?	Shard tables model-parallel, replicate the dense MLP with data parallelism, exchange embeddings with all-to-all, update only touched rows. The bottleneck is memory and all-to-all bandwidth.	chapter-11 concept
+Why is BF16 usually preferred over FP16 for training?	BF16 has FP32’s exponent range, so gradients don’t underflow and loss scaling is usually unnecessary.	chapter-11 concept
+Four fault-tolerance practices for very large training runs.	Frequent sharded asynchronous checkpoints, automatic restart, health checks that evict bad nodes, data loaders that resume at the exact sample.	chapter-11 concept
+What is MinHash used for in pretraining data pipelines?	Estimating document similarity from compact hash signatures to find near-duplicates without comparing every pair.	chapter-11 concept
+Prefill vs decode: bottleneck and latency metric of each.	Prefill is compute-bound and sets time to first token (TTFT). Decode is memory-bandwidth-bound and sets time per output token (TPOT).	chapter-12 concept
+Roofline argument for why decode is memory-bound.	An H100 offers ~300 FLOPs per byte of bandwidth; batch-1 decode does ~1 FLOP per byte read, so compute sits mostly idle.	chapter-12 concept
+Lower bound on one decode step.	t ≈ (weight bytes + KV-cache bytes of all sequences in the batch) ÷ memory bandwidth. Real systems reach ~50–80% of this bound.	chapter-12 formula
+70B model in BF16, TP = 2 on GPUs with 3.35 TB/s each, batch 1. Minimum time per token?	Each GPU reads 70 GB: 70×10⁹ ÷ 3.35×10¹² ≈ 21 ms per token (≤ ~48 tokens/s).	chapter-12 calc
+KV-cache bytes per token.	2 × layers × KV heads × head dimension × bytes per value (the 2 is for K and V).	chapter-12 formula
+40 layers, 8 KV heads, head dim 128, FP8 KV cache. Bytes per token?	2 × 40 × 8 × 128 × 1 = 81,920 B ≈ 80 KiB.	chapter-12 calc
+A model needs 320 KB of KV per token. Memory for one 64K-token request?	65,536 × 327,680 B ≈ 21 GB.	chapter-12 calc
+MQA vs GQA vs MLA.	MQA: all query heads share one K/V head. GQA: groups of query heads share K/V heads. MLA: K/V compressed into a low-rank latent.	chapter-12 concept
+Static vs continuous batching.	Static waits for the whole batch to finish. Continuous lets sequences leave and join at every decode step, so short requests don’t wait for long ones (Orca).	chapter-12 concept
+What is chunked prefill?	Splitting a long prompt’s prefill into chunks interleaved with decode steps so it doesn’t stall other users’ token streams.	chapter-12 concept
+What problem does PagedAttention solve?	KV-cache fragmentation and over-reservation: the cache lives in fixed-size blocks like OS pages, allowing larger batches and prefix sharing.	chapter-12 concept
+How should prompts be ordered to benefit from prefix caching?	Stable content (instructions, tool definitions, shared documents) first; variable content last.	chapter-12 concept
+What does FlashAttention reduce, and what doesn’t it?	It cuts memory traffic and memory use by tiling, never writing the n×n attention matrix to HBM; it is exact. It does not remove the quadratic FLOPs.	chapter-12 concept
+Why does weight-only INT4 speed up decode but barely prefill?	Decode is bandwidth-bound and INT4 cuts bytes read ~4×. Prefill is compute-bound and still multiplies in higher precision; it needs low-precision compute such as FP8.	chapter-12 concept
+Why doesn’t speculative decoding change output quality?	The target model verifies every draft token with a rejection-sampling rule, so outputs follow the target model’s distribution exactly.	chapter-12 concept
+When does speculative decoding help, and when not?	At small-to-moderate batch sizes, where decode leaves compute idle. At large batches that slack disappears and gains shrink or reverse — it is a latency tool.	chapter-12 concept
+Define goodput.	Throughput of requests that meet the latency SLO.	chapter-12 concept
+End-to-end generation latency.	≈ TTFT + TPOT × (output tokens − 1).	chapter-12 formula
+What is the main benefit of prefill/decode disaggregation?	Predictable latency: compute-bound prefill and bandwidth-bound decode stop interfering. Cost: KV-cache transfer between pools.	chapter-12 concept
+Tensor vs pipeline parallelism at inference: which lowers per-token latency?	Tensor parallelism (each GPU reads only part of the weights). Pipeline parallelism helps fit the model but doesn’t lower per-token latency.	chapter-12 concept
+MoE: what scales with total parameters and what with active parameters?	Memory scales with total (all experts resident); compute per token with active. At large batches, bandwidth per step approaches the full model.	chapter-12 concept
+MoE with 1T total and 32B active parameters, FP8 weights. Weight memory, and FLOPs per token?	≈ 1 TB of weights; ≈ 2 × 32×10⁹ = 64 GFLOPs per token.	chapter-12 calc
+How do reasoning models change capacity planning?	Thousands of thinking tokens per request make the load decode- and KV-heavy. Plan on total generated tokens; use routing and thinking budgets.	chapter-12 concept
+Visible answers stay at 500 tokens but each request adds 4,500 thinking tokens. Decode work grows by?	500 → 5,000 tokens: about 10×, slightly more because longer sequences reduce batch concurrency.	chapter-12 calc
+Prefill of a 2,000-token prompt on a 70B model at 400 TFLOP/s effective. Time?	2 × 7×10¹⁰ × 2,000 = 2.8×10¹⁴ FLOPs ÷ 4×10¹⁴ ≈ 0.7 s.	chapter-12 calc
+The adaptation ladder, cheapest first.	Prompting → RAG (missing knowledge) → fine-tuning (missing behaviour, or cost) → continued pretraining → pretraining from scratch.	chapter-13 concept
+When fine-tune and when use RAG?	RAG for knowledge that is fresh, private or must be cited. Fine-tuning for format, style, specialized behaviour, or a cheaper small model.	chapter-13 concept
+LoRA update and trainable parameter count for a d × k matrix.	ΔW = BA, B ∈ ℝ^(d×r), A ∈ ℝ^(r×k). Trainable params = r(d + k).	chapter-13 formula
+LoRA with r = 8 on a 4096 × 11008 MLP matrix. Trainable parameters?	8 × (4096 + 11008) = 120,832 (vs ~45M in the full matrix).	chapter-13 calc
+What does QLoRA add to LoRA?	Keeps the frozen base in 4-bit NF4 and trains LoRA adapters in higher precision; it fine-tuned a 65B model on one 48 GB GPU.	chapter-13 concept
+What is multi-LoRA serving?	One base model in GPU memory with many small adapters swapped per request — cheap per-customer customization.	chapter-13 concept
+Order of a typical post-training pipeline.	SFT → preference optimization (RLHF-PPO or DPO) → RL with verifiable rewards → capability, safety and regression evals.	chapter-13 concept
+How does DPO differ from RLHF-PPO?	DPO optimizes the policy directly on preference pairs with a classification-style loss — no separate reward model or RL loop.	chapter-13 concept
+Why does RLHF use a KL penalty to the reference model?	The reward model is an imperfect proxy; the penalty keeps the policy near the SFT model, limiting reward hacking and drift.	chapter-13 concept
+How does GRPO compute advantages?	By normalizing rewards among several attempts at the same task, so no value network is needed.	chapter-13 concept
+Telltale sign of reward hacking during RL training.	Training reward rises while held-out task success stays flat.	chapter-13 concept
+Defenses against reward hacking for a coding agent rewarded by passing tests.	Read-only or restored test files, hidden tests, checks that diffs don’t touch tests, trajectory review, and choosing checkpoints by held-out success.	chapter-13 concept
+What usually dominates wall-clock time in RL post-training?	Rollout generation: long traces, and each step waits for its slowest rollouts (stragglers).	chapter-13 concept
+Synchronous vs asynchronous RL pipelines.	Synchronous is strictly on-policy but GPUs idle in turn. Asynchronous overlaps generation and training with slightly stale weights; bound staleness and apply importance-weighting corrections.	chapter-13 concept
+What must every fine-tuned model be checked for besides its target task?	Regressions (catastrophic forgetting) on general and safety evaluations.	chapter-13 concept
+Four things RAG provides that a bare LLM doesn’t.	Fresh knowledge (update the index, not the model), private knowledge, citations, and permission-aware access.	chapter-14 concept
+Where do most RAG quality problems originate?	In retrieval — and many retrieval problems are parsing and chunking problems.	chapter-14 concept
+Chunk-size trade-off.	Small chunks retrieve precisely but lose context; large chunks keep context but dilute embeddings and cost more tokens. Tune on your eval set.	chapter-14 concept
+What is parent–child (small-to-big) chunking?	Index small chunks for precise matching, but return their larger parent section to the LLM.	chapter-14 concept
+What is contextual chunking?	Prepending a short generated description of where the chunk sits in its document before embedding and indexing it.	chapter-14 concept
+What do Matryoshka embeddings allow?	Truncating vectors (e.g., 1024 → 256 dims) for cheaper storage with modest quality loss.	chapter-14 concept
+What does changing the embedding model require?	Re-embedding the whole corpus — plan index versioning and backfills.	chapter-14 concept
+Dense retrieval vs BM25: what each misses.	Dense misses exact rare terms (error codes, SKUs, names). BM25 misses paraphrases. Hybrid search uses both.	chapter-14 concept
+Reciprocal Rank Fusion.	RRF(d) = Σ over rankers of 1 / (k + rank(d)), k ≈ 60. It needs only ranks, no score normalization.	chapter-14 formula
+RRF (k = 60) for a document ranked 2nd by BM25 and 5th by dense.	1/62 + 1/65 ≈ 0.0161 + 0.0154 ≈ 0.0315.	chapter-14 calc
+Typical retrieve-then-rerank setup in RAG.	Retrieve 50–200 candidates for recall, rerank with a cross-encoder reading query and chunk together, keep the top 5–10.	chapter-14 concept
+What is HyDE?	The LLM writes a hypothetical answer, which is embedded and used as the search query, because answers resemble documents more than questions do.	chapter-14 concept
+Why is conversational query rewriting essential in multi-turn RAG?	Follow-ups like “what about contractors?” lack context; rewriting with chat history produces a standalone query.	chapter-14 concept
+Where should the most relevant chunks go in the context, and why?	First (or at the edges): models use the middle of long contexts less reliably (“Lost in the Middle”).	chapter-14 concept
+Where must document permissions be enforced in RAG?	Deterministically in the retrieval query (pre-filter by the user’s groups). Anything in the context can leak into the output.	chapter-14 concept
+How should RAG treat instructions found inside retrieved documents?	As untrusted data, never as instructions (indirect prompt injection).	chapter-14 concept
+What kind of question does GraphRAG help with?	Global “sensemaking” questions across a corpus (main themes across all reports), which chunk retrieval handles poorly.	chapter-14 concept
+When does long context beat RAG, and when does RAG win?	Long context (plus prompt caching) suits a small corpus queried rarely. RAG wins for large or changing corpora, permissions, and per-query cost or latency.	chapter-14 concept
+RAG debugging: right chunk retrieved but ranked low. Fix?	Add or tune a reranker, or pass more chunks (larger k).	chapter-14 concept
+RAG debugging: right chunk never retrieved. Fixes?	Parsing, chunking, embedding model, hybrid search, query rewriting.	chapter-14 concept
+RAG debugging: right chunk in context but wrong answer. Fixes?	Prompt, model choice, context ordering, less noise in the context.	chapter-14 concept
+What should a RAG golden set contain?	200–1,000 real user questions with reference answers and the chunk IDs that should be retrieved, including unanswerable questions (correct behaviour: decline).	chapter-14 concept
+What does a faithfulness (groundedness) score measure?	Whether every claim in the answer is supported by the retrieved context; scored with an LLM judge or NLI model.	chapter-14 concept
+Working definition of an agent.	An LLM using tools in a loop, directing its own process based on feedback from the environment.	chapter-15 concept
+First principle of agent design.	Use the least autonomy that solves the problem: single call → workflow → agent → multi-agent, climbing only when the simpler option fails.	chapter-15 concept
+Workflow vs agent.	Workflow: developer-defined code paths — predictable, testable, cheaper. Agent: the LLM decides steps and tools dynamically — flexible, harder to test and bound.	chapter-15 concept
+Seven components of an agent.	Model, instructions, tools, context/memory, orchestration loop, environment, guardrails.	chapter-15 concept
+Four safety features every agent loop needs.	A step budget, unknown-tool handling, tool errors returned to the model, human approval for consequential actions.	chapter-15 concept
+Why prefer task-level tools over thin API wrappers?	Fewer, more capable tools mean fewer steps, and fewer steps mean fewer compounding errors.	chapter-15 concept
+Agent–computer interface (tool design) principles besides granularity.	Clear descriptions, strict typed schemas with enums, concise paginated outputs, actionable error messages, idempotency and least privilege.	chapter-15 concept
+Prompt chaining.	A fixed sequence of LLM calls, each using the previous output, with programmatic checks (gates) between steps.	chapter-15 concept
+Routing pattern.	Classify the input and send it to a specialized prompt, model or tool chain (e.g., easy queries to a small model).	chapter-15 concept
+Parallelization: sectioning vs voting.	Sectioning splits a task into independent subtasks run at once. Voting runs the same task several times and aggregates.	chapter-15 concept
+Orchestrator–workers vs parallelization.	In orchestrator–workers the subtasks aren’t known in advance; a central LLM decides them dynamically, delegates, and synthesizes.	chapter-15 concept
+Evaluator–optimizer pattern.	One LLM generates, another critiques against criteria, looping until good enough.	chapter-15 concept
+ReAct vs plan-and-execute.	ReAct interleaves reasoning, actions and observations step by step. Plan-and-execute writes an explicit (approvable) plan first, then executes, re-planning on failure.	chapter-15 concept
+Most useful kind of evaluator inside an agent loop.	An objective one: tests, compilers, schema validators, constraint checks, simulators — stronger than an LLM judging its own work.	chapter-15 concept
+What is “context rot”?	As the context fills with history and tool output, the model becomes slower, costlier and worse at finding what matters.	chapter-15 concept
+Context compaction.	Near the limit, summarize older turns — keeping decisions, open questions and key facts — and drop raw tool outputs.	chapter-15 concept
+Just-in-time retrieval for agents.	Keep lightweight references (paths, IDs, URLs) and load content only when needed.	chapter-15 concept
+How do sub-agents help context management?	A sub-task runs in a fresh, clean context and returns only a condensed result.	chapter-15 concept
+Episodic vs semantic vs procedural memory.	Episodic: past interactions and outcomes. Semantic: facts about the user or world. Procedural: how to do things (playbooks, skills).	chapter-15 concept
+Five memory design questions an interviewer probes.	What gets written, when, how it’s retrieved (similarity + recency + importance), how it’s corrected or deleted, and privacy scoping per user/tenant.	chapter-15 concept
+When do multi-agent systems help?	Broad, parallelizable tasks; sub-tasks needing separate clean contexts; sub-tasks needing different tools or permissions.	chapter-15 concept
+When do multi-agent systems hurt?	Tightly coupled tasks such as writing one coherent piece of code: agents lose shared context and make conflicting assumptions. They also multiply token cost.	chapter-15 concept
+MCP vs A2A.	MCP connects an agent or app to tools and data. A2A connects agents to other agents.	chapter-15 concept
+Three primitives an MCP server exposes.	Tools (actions), resources (readable data), prompts (reusable templates).	chapter-15 concept
+The lethal trifecta.	Access to private data + exposure to untrusted content + ability to communicate externally. Together they enable exfiltration; remove at least one.	chapter-15 concept
+Direct vs indirect prompt injection.	Direct: the user tries to override instructions. Indirect: instructions hidden in content the agent reads (web page, email, tool result).	chapter-15 concept
+Idea behind the dual-LLM / CaMeL pattern.	A privileged planner never sees untrusted content; a quarantined model processes it, and its outputs can’t trigger tools unchecked.	chapter-15 concept
+Why put “refunds over $200 need approval” in the tool code, not the prompt?	Code runs deterministically and can’t be talked around by injection or model error; it is testable and auditable.	chapter-15 concept
+Defense-in-depth layers for agents.	Least privilege, sandboxing with egress allowlists, human approval for irreversible actions, deterministic policy checks, input/output classifiers, audit logs, budgets.	chapter-15 concept
+Each of 10 agent steps succeeds independently with p = 0.97. Task success?	0.97¹⁰ ≈ 0.74.	chapter-15 calc
+Common agent failure modes.	Looping on a failing call, premature success claims, hallucinated tool arguments, losing the goal in long contexts, over-eager out-of-scope actions.	chapter-15 concept
+What is durable execution for long-running agents?	Persist state after each step, make steps idempotent, resume from the last checkpoint; run long tasks asynchronously with a task ID.	chapter-15 concept
+pass@k vs pass^k for per-attempt success p.	pass@k = 1 − (1 − p)ᵏ (at least one succeeds). pass^k = pᵏ (all succeed — consistency).	chapter-15 formula
+p = 0.9 per attempt, k = 5. pass@5 and pass^5?	pass@5 = 1 − 0.1⁵ ≈ 0.99999. pass^5 = 0.9⁵ ≈ 0.59.	chapter-15 calc
+Which metric matters for a customer-facing agent: pass@k or pass^k?	pass^k — every customer interaction must work, so consistency is what counts.	chapter-15 concept
+Outcome vs trajectory evaluation of agents.	Outcome: was the end state correct (tests pass, right DB record)? Trajectory: was the path reasonable — right tools, no unsafe actions or wasted steps?	chapter-15 concept
+What should an agent trace contain?	A tree of spans: each LLM call (prompt, response, tokens, latency, model version) and each tool call (arguments, result, errors).	chapter-15 concept
+Four steps of evaluation-driven development.	Build an eval set early (every bug becomes a test), define graders, run evals in CI on every prompt/model/retrieval change, monitor sampled production traffic.	chapter-16 concept
+Grader preference order.	Code-based (exact match, schema validity, unit tests) whenever possible; LLM-as-judge for open-ended quality; human review to calibrate judges.	chapter-16 concept
+Four LLM-as-judge biases and fixes.	Position (judge both orders), verbosity (rubric penalizes padding), self-preference (different judge family), inconsistency (low temperature, explicit rubric, reasoning before score).	chapter-16 concept
+How do you validate an LLM judge?	Compare it with a few hundred human labels and report agreement (e.g., Cohen’s kappa); re-validate when the judge model changes.	chapter-16 concept
+Input vs output guardrails.	Input: injection/jailbreak classifiers, PII redaction, topic filters, rate limits. Output: moderation, PII leakage checks, structured-output validation, groundedness and business-rule checks.	chapter-16 concept
+Layers of hallucination mitigation.	Grounding with citations, validated citations, permitting “I don’t know”, lower temperature, tools for arithmetic/dates/lookups, a checker pass for high stakes.	chapter-16 concept
+Cost per LLM request.	Σ over all calls of (input tokens × input price + output tokens × output price). Thinking tokens are usually billed as output.	chapter-16 formula
+3 calls per task, each 10,000 input and 500 output tokens, at $3/M input and $15/M output. Cost per task?	Input 30,000 × $3/M = $0.09; output 1,500 × $15/M = $0.0225; total ≈ $0.11.	chapter-16 calc
+Biggest levers to cut LLM app cost.	Model routing/cascades, prompt caching, response caching, trimming context, limiting output and reasoning length, batch APIs for offline work.	chapter-16 concept
+Why is a semantic cache risky for personalized answers?	Similar-looking queries can differ in meaning (“cancel” vs “don’t cancel”) and answers may contain another user’s data. Use only for non-personalized FAQs with high thresholds.	chapter-16 concept
+Four reliability practices for LLM apps.	Retries with exponential backoff and jitter, provider/model fallbacks validated by evals, pinned dated model versions, per-user quotas.	chapter-16 concept
+What does an interviewer expect on regulation for an LLM use case?	Recognize high-risk domains (hiring, credit, healthcare) and involve legal/compliance; add human oversight for consequential decisions.	chapter-16 concept
+CS1 Video feed: what objective should the ranker optimize?	A weighted mix of P(click), E[watch time], P(like), P(share) minus P(dislike), with weights tuned online against long-term retention.	chapter-CS scenario
+CS1: why a light ranker between ~2,000 retrieved and ~500 heavy-ranked candidates?	Heavy-ranker cost scales with candidate count; scoring 2,000 instead of 500 costs ~4× more.	chapter-CS scenario
+CS2 Ad CTR: offline AUC improved, revenue dropped. Most likely cause?	Miscalibration: the auction multiplies pCTR by bids, and AUC ignores calibration. Check log loss and calibration ratio (Σ predicted ÷ Σ actual clicks ≈ 1) per segment.	chapter-CS scenario
+CS3 Fraud: expected-cost decline rule.	Decline if P(fraud) × amount × c_fraud &gt; (1 − P) × c_false-decline, with a middle band for step-up authentication.	chapter-CS formula
+CS3: which label problem do declined transactions create?	Selection bias: declined transactions never get a fraud label. Keep a loss-capped exploration slice or a review sample.	chapter-CS scenario
+CS3: what happens if the fraud model times out on the payment path?	Fall back to a rules-only decision within the ~100 ms budget.	chapter-CS scenario
+CS4 Product search: why not train the ranker only on clicks?	Clicks are position-biased and reward catchy, cheap items. Anchor on human relevance labels and use purchase signals with bias correction.	chapter-CS scenario
+CS4: how do you handle the ambiguous query “apple”?	A query category classifier gives a distribution over intents; blend results, personalize by history and context, and diversify the first page.	chapter-CS scenario
+CS5 Moderation: order of the detection cascade.	Hash matching for known content → cheap unimodal classifiers → multimodal model on the uncertain fraction → auto-remove, human review band, or publish.	chapter-CS scenario
+CS5: how should the human review queue be prioritized?	By P(violation) × severity × expected reach, because harm scales with views and reviewer capacity is the binding constraint.	chapter-CS scenario
+CS5: north-star integrity metric for moderation.	Prevalence: the fraction of views that were violating content, measured by sampling and labeling.	chapter-CS concept
+CS6 Enterprise RAG: a user loses access to a folder. How does the assistant stop using it?	Permission events update ACL metadata on chunks (no re-embedding); retrieval filters by the user’s current groups; a reconciliation job catches missed events.	chapter-CS scenario
+CS6: two documents give conflicting policies. What should the answer do?	Prefer the most recent authoritative source, mention the conflict with both citations, and flag it to the document owners.	chapter-CS scenario
+CS7 70B chat serving: how is the batch size chosen?	From the per-user speed SLO and memory headroom: batch ≈ 128 keeps ≥ 25 tokens/s per user and ~25% memory free; 192 would leave only ~9% free.	chapter-CS scenario
+CS7: biggest cost lever and roughly what it saves.	Prefix caching with session-affinity routing: prefill compute drops from ~2,450 to ~600 GPUs’ worth.	chapter-CS scenario
+CS7: first token takes 8 s at peak. Four causes to check.	Queueing (capacity/autoscaling), long prompts monopolizing prefill, prefix-cache misses from routing, KV pressure causing preemption.	chapter-CS scenario
+CS8 Support agent: where does the customer’s identity come from?	The authenticated session, injected by the system into tools — never from the conversation or the LLM.	chapter-CS scenario
+CS8: which online metric reveals false “resolutions”?	Re-contact rate within 7 days.	chapter-CS scenario
+CS8: safe rollout sequence for a support agent.	Copilot drafts for humans → autonomous read-only intents → write actions with low limits and confirmations on a small traffic share, with a kill switch.	chapter-CS scenario
+CS9 Deep research: why is orchestrator–workers justified?	The task is breadth-first and parallelizable, and the material gathered exceeds one context window.	chapter-CS scenario
+CS9: subagents keep researching the same sub-topic. Fix?	Explicit, disjoint task specs with scope boundaries, a shared plan store checked before spawning, and source deduplication.	chapter-CS scenario
+CS10: newsvendor optimal order quantity.	Order the demand quantile c_u / (c_u + c_o): c_u = cost per unit short, c_o = cost per unit left over.	chapter-CS formula
+CS10: a product has $4 margin lost per unit short and $1 cost per unsold unit. Which quantile to order?	4 / (4 + 1) = 0.8 → the 80th percentile of forecast demand.	chapter-CS calc
+CS10: why can training on raw sales cause more stockouts?	Stockouts censor demand (zero sales while demand existed), so the model under-forecasts items that sell out. Mask or impute stockout periods.	chapter-CS scenario
+CS10: why WAPE rather than MAPE?	MAPE is undefined when actual sales are zero and treats over- and under-forecasts asymmetrically. WAPE = Σ|y − ŷ| / Σy handles zeros and weights by volume.	chapter-CS concept
+Pinball (quantile) loss for quantile τ.	L = max(τ(y − ŷ), (τ − 1)(y − ŷ)): under-prediction weighted τ, over-prediction 1 − τ; minimized at the τ-quantile.	chapter-CS formula
+CS10: correct evaluation protocol for forecasts.	Rolling-origin backtests: train to day T, forecast ahead, move T forward, repeat across seasons. Never random-split time series.	chapter-CS concept
+CS11 Voice agent: what makes latency the dominant constraint?	Human turn gaps are ~200 ms; a multi-second pause feels broken. Measure voice-to-voice latency at the phone line.	chapter-CS concept
+CS11: usually the biggest tunable piece of voice latency?	Endpointing — deciding the caller has finished. Use semantic turn detection instead of a fixed silence timeout.	chapter-CS concept
+CS11: the caller interrupts the agent. Which step is easy to forget?	Truncating conversation history to what the caller actually heard, after stopping playback.	chapter-CS scenario
+CS12 Reasoning model: does routing only hard requests to unlimited reasoning meet “cost per solved problem ≤ 2×”?	No: ~4× per request, so ≥ 2.8× per solved problem even at 100% accuracy. Add a small model for easy requests and a ~2,000-token thinking budget (≈ 1.9× per request).	chapter-CS scenario
+CS12: when is best-of-n sampling justified?	Only as an escalation when an objective verifier exists (tests, answer checks), with its n× cost counted.	chapter-CS concept
+Capstone A (People You May Know): dominant candidate source and why it is computed offline.	Friends-of-friends; ~300 × 300 = 90,000 candidates per user is too costly per request, so a batch graph job keeps the top-K.	chapter-X concept
+Adamic–Adar index.	Sum over mutual friends of 1 / log(that friend’s number of friends): a mutual friend with few friends is stronger evidence.	chapter-X formula
+Capstone B (coding agent): why a single agent rather than multi-agent?	Coding is tightly coupled, so shared context matters; use sub-agents only for read-only exploration.	chapter-X concept
+Capstone B: the only action that leaves the coding agent’s sandbox.	Opening a draft pull request — humans review before merge; no secrets in the sandbox, egress allowlisted.	chapter-X concept
+Capstone C (visual search): main evaluation risk and how to address it.	The domain gap between studio catalog photos and real user photos; evaluate recall@10 on labeled real user photos.	chapter-X concept
+Capstone D (bank build vs buy): decision-matrix dimensions.	Quality on real tasks, data governance, cost at projected volume, latency, control (version pinning), engineering effort.	chapter-X concept
+Lab 4: why does the injection test pass even though the scripted model was fooled?	The approval rule lives in the issue_refund tool code, and identity comes from the session — not from the prompt.	chapter-X concept
+Lab 4: an attacker splits one large refund into many small ones. Fix?	Enforce a cumulative refund limit per order or per customer in the tool layer.	chapter-X scenario
+Lab 1: gradient of in-batch softmax cross-entropy with respect to the score matrix S = UVᵀ − log q.	P − I (softmax probabilities minus the identity); user gradient (P − I)V, item gradient (P − I)ᵀU.	chapter-X formula
+The interviewer says “you decide” about scale. What do you do?	State an assumption with a number and move on (“I’ll assume 100M DAU and p99 of 200 ms”).	chapter-PB concept
+How should each major design choice be presented?	The option you pick, one alternative, and why — tied to a constraint.	chapter-PB concept
+Precision or recall: cancer-screening triage vs auto-removing posts?	Screening: recall (follow-up tests catch false positives). Auto-removal: precision (send the uncertain middle to humans).	chapter-PB concept
+Self-grading rubric: which result means you should redo the case?	A total below 14 of 24, or any score of 1 in Data or Evaluation.	chapter-PB concept
+How do you close an interview strongly?	A 30-second summary, the top risks and how you’d monitor them, and next iterations.	chapter-PB concept
